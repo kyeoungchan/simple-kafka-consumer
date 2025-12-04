@@ -2,12 +2,16 @@ package com.example.simplekafkaconsumer.synccommit;
 
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 @Slf4j
@@ -46,17 +50,28 @@ public class SyncCommitConsumer {
         consumer.subscribe(Arrays.asList(TOPIC_NAME));
 
         /* 컨슈머는 poll() 메서드를 통해 데이터를 가져와 처리한다.
-        * 지속적으로 데이터를 처리하기 위해서 반복 호출을 해야 한다. */
+         * 지속적으로 데이터를 처리하기 위해서 반복 호출을 해야 한다. */
         while (true) {
             // poll() 메서드는 Duration 타입을 인자로 받는다.
             // 컨슈머 버퍼에 데이터를 기다리기 위한 타임아웃 간격을 뜻한다.
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+
+            // 현재 처리한 오프셋을 매번 커밋하기 위해 commitSync()가 파라미터로 받을 HashMap이 필요하다.
+            // TopicPartition: 토픽과 파티션 정보를 갖고 있다.
+            // OffsetAndMetadata: 오프셋 정보를 갖고 있다.
+            Map<TopicPartition, OffsetAndMetadata> currentOffset = new HashMap<>();
+
             for (ConsumerRecord<String, String> record : records) {
                 log.info("record: {}", record);
+                currentOffset.put(
+                        new TopicPartition(record.topic(), record.partition()),
+                        /* 현재 처리한 오프셋에 1을 더한 값을 해야한다.
+                         * 위에 poll() 메서드 결과는 마지막으로 커밋한 오프셋부터 레코드를 반환하기 때문이다. */
+                        new OffsetAndMetadata(record.offset() + 1, null)
+                );
+                // poll() 메서드로 받은 가장 마지막 레코드의 오프셋 기준으로 커밋 ➡ 모든 레코드의 처리가 끝난 후 commitSync() 메서드 호출
+                consumer.commitSync(currentOffset);
             }
-
-            // poll() 메서드로 받은 가장 마지막 레코드의 오프셋 기준으로 커밋 ➡ 모든 레코드의 처리가 끝난 후 commitSync() 메서드 호출
-            consumer.commitSync();
         }
     }
 }
