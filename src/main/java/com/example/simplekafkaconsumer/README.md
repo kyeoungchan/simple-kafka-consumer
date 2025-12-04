@@ -1,3 +1,7 @@
+- [실행 결과](#-실행-결과)
+- [토픽에 데이터 전송](#-토픽에-데이터-전송)
+- [셧다운 훅 걸기](#-셧다운-훅-걸기)
+
 # 💻 실행 결과
 
 ```shell
@@ -151,3 +155,31 @@
 07:12:07.908 [main] INFO com.example.simplekafkaconsumer.SimpleConsumer -- record: ConsumerRecord(topic = test, partition = 2, leaderEpoch = 4, offset = 1, CreateTime = 1764713526853, deliveryCount = null, serialized key size = -1, serialized value size = 11, headers = RecordHeaders(headers = [], isReadOnly = false), key = null, value = testMessage)
 
 ```
+
+<br>
+
+# 💻 토픽에 데이터 전송
+로컬 환경에서 다음과 같이 커맨드를 실행하면 데이터를 전송하면서 실시간으로 카프카 송수신 결과를 확인할 수 있다.
+```shell
+$ bin/kafka-console-producer.sh --bootstrap-server my-kafka:9092 --topic test
+>testMessage
+```
+
+<br>
+
+# 💻 셧다운 훅 걸기
+먼저 SimpleConsumer 프로세스 번호(pid) 찾기
+```shell
+$ jps -ml
+...
+6477 com.example.simplekafkaconsumer.SimpleConsumer
+```
+<br>
+
+해당 애플리케이션 종료시키기
+```shell
+$ kill -TERM 6477
+```
+<br>
+
+그러면 셧다운 훅이 걸리면서 안전하게 컨슈머 애플리케이션이 종료된다.
