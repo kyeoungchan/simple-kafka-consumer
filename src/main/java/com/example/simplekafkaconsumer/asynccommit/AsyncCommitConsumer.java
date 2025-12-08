@@ -1,20 +1,21 @@
-package com.example.simplekafkaconsumer;
+package com.example.simplekafkaconsumer.asynccommit;
 
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 @Slf4j
-public class SimpleConsumer {
+public class AsyncCommitConsumer {
 
     // 토픽 이름
     private final static String TOPIC_NAME = "test";
@@ -29,12 +30,7 @@ public class SimpleConsumer {
      * 컨슈머 오프셋이 있어야 컨슈머가 도중에 중단, 재시작되더라도 오프셋 이후 데이터 처리가 가능 */
     private final static String GROUP_ID = "test-group";
 
-    private static KafkaConsumer<String, String> consumer;
-
     public static void main(String[] args) {
-
-        Runtime.getRuntime().addShutdownHook(new ShutdownThread());
-
         Properties configs = new Properties();
 
         configs.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
@@ -44,44 +40,40 @@ public class SimpleConsumer {
         configs.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         configs.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
+        // 수동 커밋으로 설정
+        configs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+
         // Properties를 KafkaConsumer 생성 파라미터로 전달하여 인스턴스 생성
-        consumer = new KafkaConsumer<>(configs);
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configs);
 
         // 컨슈머에게 토픽을 할당
         consumer.subscribe(Arrays.asList(TOPIC_NAME));
 
-        // 컨슈머에 할당된 파티션 확인하려면 assignment() 메서드로 확인 가능
-/*
-        Set<TopicPartition> assignedTopicPartition = consumer.assignment();
-        log.info("assignedTopicPartition: {}", assignedTopicPartition);
-*/
-
-        try {
-            /* 컨슈머는 poll() 메서드를 통해 데이터를 가져와 처리한다.
-             * 지속적으로 데이터를 처리하기 위해서 반복 호출을 해야 한다. */
-            while (true) {
-                // poll() 메서드는 Duration 타입을 인자로 받는다.
-                // 컨슈머 버퍼에 데이터를 기다리기 위한 타임아웃 간격을 뜻한다.
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-                for (ConsumerRecord<String, String> record : records) {
-                    log.info("record: {}", record);
-                }
+        /* 컨슈머는 poll() 메서드를 통해 데이터를 가져와 처리한다.
+        * 지속적으로 데이터를 처리하기 위해서 반복 호출을 해야 한다. */
+        while (true) {
+            // poll() 메서드는 Duration 타입을 인자로 받는다.
+            // 컨슈머 버퍼에 데이터를 기다리기 위한 타임아웃 간격을 뜻한다.
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+            for (ConsumerRecord<String, String> record : records) {
+                log.info("record: {}", record);
             }
-        } catch (WakeupException e) {
-            // poll() 메서드가 호출된 이후에 wakeup() 메서드가 도중에 호출되면 WakeupException이 발생한다.
-            log.warn("Wakeup consumer");
-            // 리소스 종료 처리
-        } finally {
-            consumer.close();
-        }
-    }
 
-    static class ShutdownThread extends Thread {
-        @Override
-        public void run() {
-            log.info("Shutdown hook");
-            // 컨슈머 애플리케이션을 안전하게 종료시키는 메서드
-            consumer.wakeup();
+            // commitSync()와 마찬가지로 poll() 메서드로 받은 가장 마지막 레코드의 오프셋 기준으로 커밋
+            // 그러나 모든 레코드의 처리가 끝난 후 commitAsync() 메서드를 호출할 필요는 없다.
+            consumer.commitAsync(new OffsetCommitCallback() {
+                /**
+                 * 비동기로 커밋 응답을 받기 때문에 callback 함수를 파라미터로 써서 결과를 얻을 수 있다.
+                 */
+                @Override
+                public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception e) {
+                    if (e != null) {
+                        log.error("Commit failed for offsets {}", offsets, e);
+                    } else {
+                        log.info("Commit success for offsets {}", offsets);
+                    }
+                }
+            });
         }
     }
 }
