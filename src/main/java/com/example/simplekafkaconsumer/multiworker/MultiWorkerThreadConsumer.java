@@ -1,8 +1,10 @@
-package com.example.simplekafkaconsumer;
+package com.example.simplekafkaconsumer.multiworker;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -12,7 +14,7 @@ import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 @Slf4j
-public class SimpleConsumer {
+public class MultiWorkerThreadConsumer {
 
     // 토픽 이름
     private final static String TOPIC_NAME = "test";
@@ -49,11 +51,8 @@ public class SimpleConsumer {
         // 컨슈머에게 토픽을 할당
         consumer.subscribe(Arrays.asList(TOPIC_NAME));
 
-        // 컨슈머에 할당된 파티션 확인하려면 assignment() 메서드로 확인 가능
-/*
-        Set<TopicPartition> assignedTopicPartition = consumer.assignment();
-        log.info("assignedTopicPartition: {}", assignedTopicPartition);
-*/
+        ExecutorService executorService = Executors.newCachedThreadPool();
+
 
         try {
             /* 컨슈머는 poll() 메서드를 통해 데이터를 가져와 처리한다.
@@ -61,9 +60,11 @@ public class SimpleConsumer {
             while (true) {
                 // poll() 메서드는 Duration 타입을 인자로 받는다.
                 // 컨슈머 버퍼에 데이터를 기다리기 위한 타임아웃 간격을 뜻한다.
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
                 for (ConsumerRecord<String, String> record : records) {
                     log.info("record: {}", record);
+                    ConsumerWorker worker = new ConsumerWorker(record.value());
+                    executorService.execute(worker);
                 }
             }
         } catch (WakeupException e) {
